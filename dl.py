@@ -1,15 +1,16 @@
-from __future__ import unicode_literals
+from __future__ import unicode_literals #TODO find out why this is here. Is it used?
 from ftplib import FTP
 import os
+import sys
 import getopt
 import urllib.request
 import winreg
 import threading
+import getopt
+import configparser
 
 youtube_dl_exe_url = "https://yt-dl.org/latest/youtube-dl.exe"
 youtube_dl_exe = 'youtube-dl.exe'
-
-args = ['clean', 'dl', 'setup']
 
 videolist = []
 videolistlock = threading.Condition()
@@ -18,10 +19,29 @@ mp3listlock = threading.Condition()
 downloadfinished = False
 convertingfinished = False
 
-host = '192.168.1.33'
-port = 2221
-name = 'francis'
-password = 'francis'
+def editConfig(valueDict):
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    keys = list(valueDict.keys())
+    for key in keys:
+        config['FTP'][key] = valueDict[key]
+    with open('config.ini', 'w+') as configfile:
+        config.write(configfile)
+        configfile.close
+
+def setUsername(username):
+    editConfig({'username': username})
+
+def setPassword(password):
+    editConfig({'password': password})
+
+def setPassword(host):
+    #TODO check that host is an ip address
+    editConfig({'host': host})
+
+def setPassword(port):
+    #TODO check that port is a port
+    editConfig({'port': port})
 
 def setup():
     directorypath = os.path.dirname(os.path.realpath(__file__))
@@ -34,7 +54,7 @@ def setup():
             urllib.request.urlretrieve(youtube_dl_exe_url, youtube_dl_exe)
             print('Download sucessful')
         except:
-            print("Can't download file")
+            print("Can't download youtube-dl.exe file")
     try:
         vidToList = winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, 'vidToList')
         winreg.OpenKey(vidToList, 'DefaultIcon')
@@ -57,6 +77,15 @@ def setup():
             print('Registry keys set up')
         except:
             print('You might have to run it in administrator mode')
+    #TODO check if ini file is already configured
+    config = configparser.ConfigParser()
+    config['FTP'] = {'username': 'francic',
+                         'password': 'francis',
+                         'host': '192.168.1.33',
+                         'port': '2221'}
+    with open('config.ini', 'w') as configfile:
+        config.write(configfile)
+        configfile.close()
 
 class DownloadThread (threading.Thread):
     def __init__(self):
@@ -64,6 +93,7 @@ class DownloadThread (threading.Thread):
 
     def run(self):
         print('Downloading videos...')
+        #TODO find out if all these globals are needed
         global vidoelist
         global videolistlock
         global downloadfinished
@@ -94,6 +124,7 @@ class ConverterThread(threading.Thread):
 
 
     def run(self):
+        #TODO figure out if all these globals are needed
         print('Starting to convert')
         global downloadfinished
         global convertingfinished
@@ -126,17 +157,23 @@ class ConverterThread(threading.Thread):
         print('Finished converting')
             
 class FTPThread(threading.Thread):
-    def __init__(self):
+    
+    def __init__(self, username, password, host, port):
         threading.Thread.__init__(self)
+        self.username = username
+        self.password = password
+        self.host = host
+        self.port = port
 
     def run(self):
         directorypath = os.path.dirname(os.path.realpath(__file__))
         print('Starting ftp')
         ftp = FTP()
-        ftp.connect(host, port)
+        ftp.connect(self.host, self.port)
         print("Connection complete, now logging in")
-        ftp.login(name, password)
+        ftp.login(self.username, self.password)
         print("Login complete")
+        #TODO find out if all these globals are needed
         global convertingfinished
         global mp3listlock
         global mp3list
@@ -155,22 +192,101 @@ class FTPThread(threading.Thread):
         print('ftp done, closing connection')
         ftp.close()
 
-def cleanup:
+def cleanup():
     print('Starting the cleanup process')
     dirs = os.listdir()
+    print(dirs)
     for file in dirs:
-        if '.mp3' in file or '.mp4' in dirs:
-            os.remove('file')
+        if '.mp3' in file or '.mp4' in file:
+            os.remove(file)
     open("dlList.txt","w").close()
     print('Done cleaning up')
                     
+def main(argv):
+    #Default values
+    host = '192.168.1.33'
+    port = 2221
+    username = 'francis'
+    password = 'francis'
 
-thread1 = DownloadThread()
-thread2 = ConverterThread()
-thread3 = FTPThread()
-thread1.start()
-thread2.start()
-thread3.start()
-thread1.join()
-thread2.join()
-thread3.join()
+    #Get values from config file
+    #TODO figure out some more efficient method of setting ftp values
+    try:
+        config = configparser.ConfigParser()
+        config.read('config.ini')
+        ftp = donfig['FTP']
+        host = ftp['host']
+        port = int(ftp['port'])
+        username = ftp['username']
+        password = ftp['password']
+    #TODO figure out which kind of exception is thrown here and handle it
+    except:
+        pass
+    
+    try:
+        opts, args = getopt.getopt(argv, 'hu:p:', ['ip=', 'port='])
+    except getopt.GetoptError:
+        print('Temp error message')
+        usage()
+        sys.exit()
+    for opt, arg in opts:
+        if opt == '-h':
+            usage()
+            sys.exit()
+        elif opt == '-u':
+            name = arg
+        elif opt == '-p':
+            password = arg
+        elif opt == '--host':
+            host = arg
+        elif opt == '--port':
+            port = int(arg)
+    if args[0] == 'run':
+        thread1 = DownloadThread()
+        thread2 = ConverterThread()
+        thread3 = FTPThread(username, password, host, port)
+        thread1.start()
+        thread2.start()
+        thread3.start()
+        thread1.join()
+        thread2.join()
+        thread3.join()
+        cleanup()
+    elif args[0] == 'setup':
+        setup()
+    elif args[0] == 'username':
+        try:
+            setUsername(args[1])
+        except IndexError:
+            #TODO better error message
+            print('Temp error message')
+            usage()
+    elif args[0] == 'password':
+        try:
+            setUsername(args[1])
+        except IndexError:
+            #TODO better error message
+            print('Temp error message')
+            usage()
+    elif args[0] == 'host':
+        try:
+            setUsername(args[1])
+        except IndexError:
+            #TODO better error message
+            print('Temp error message')
+            usage()
+    elif args[0] == 'port':
+        try:
+            setUsername(args[1])
+        except IndexError:
+            #TODO better error message
+            print('Temp error message')
+            usage()
+            
+    
+
+def usage():
+    print('Temp usage message')
+
+if __name__ == "__main__":
+   main(sys.argv[1:])
